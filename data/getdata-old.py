@@ -23,15 +23,14 @@ def get_playlist_tracks(playlist_id):
         tracks.extend(results['items'])
     return tracks
 
-def filter_important_audio_features(audio_features):
-    feature_cols = ['danceability', 'energy', 'loudness', 'speechiness', 'acousticness', 'instrumentalness',
-                    'liveness', 'valence', 'tempo', 'duration_ms', 'key', 'mode', 'time_signature']
-    if audio_features is None or len(audio_features) == 0:
+def get_track_audio_features(track_id):
+    features =  spotify.audio_features(track_id)
+    feature_cols = ['id', 'danceability', 'energy', 'key', 'loudness', 'mode', 'speechiness', 'acousticness',
+                    'instrumentalness', 'liveness', 'valence', 'tempo', 'duration_ms', 'time_signature']
+    if features is None or len(features) == 0 or features[0] is None:
         return None
-    return {k: audio_features[k] for k in feature_cols}
+    return {k: v for k, v in features[0].items() if k in feature_cols}
 
-def format_genres(genres):
-    return ','.join(genres)
 
 def get_track_genres(track_id):
     artist_id = spotify.track(track_id)['artists'][0]['id']
@@ -69,49 +68,26 @@ if __name__ == '__main__':
         playlist_name = spotify.playlist(playlist_id)['name']
         print(f"{i+1}. Getting playlist {playlist_name}'s tracks...")
         tracks = get_playlist_tracks(playlist_id)
-        num_tracks = len(tracks)
-        print(f"{num_tracks} tracks")
+        print(f"{len(tracks)} tracks")
 
-        # get several track artists at once to reduce api calls
-        artist_ids = [track['track']['artists'][0]['id'] for track in tracks] # get main artist ids, one-to-one mapping with tracks
-        artist_id_chunks = [artist_ids[i:i+50] for i in range(0, len(artist_ids), 50)] # max 50 artists per request
-        artists = []
-        for artist_id_chunk in artist_id_chunks:
-            artists.extend(spotify.artists(artist_id_chunk)['artists'])
-        
-        print(f"{len(artists)} artist details retrieved")
-
-        # get several audio features at once to reduce api calls
-        track_ids = [track['track']['id'] for track in tracks]
-        track_id_chunks = [track_ids[i:i+50] for i in range(0, len(track_ids), 50)] # max 50 tracks per request
-        audio_features = []
-        for track_id_chunk in track_id_chunks:
-            audio_features.extend(spotify.audio_features(track_id_chunk))
-
-        print(f"{len(audio_features)} track audio features retrieved")
-
-        #Get track info and audio features
+    #Get track audio features
         for j, track in enumerate(tracks):
             track_id = track['track']['id']
             track_name = track['track']['name']
-            track_artist_id = track['track']['artists'][0]['id']
-            track_artist_name = track['track']['artists'][0]['name']
-            track_genres = format_genres(artists[j]['genres']) # one-to-one mapping with tracks
-            track_audio_features = filter_important_audio_features(audio_features[j]) # one-to-one mapping with tracks
-            
-            print(f"\t--- {j+1} / {num_tracks} ---")
-            print(f"\tTrack: {track_name} @ {track_id}")
-            print(f"\tArtist: {track_artist_name} @ {artists[j]['id']}")
+            track_artist = track['track']['artists'][0]['name']
+            track_audio_features = get_track_audio_features(track_id)
+            print(f"\t--- {j+1} ---")
+            print(f"\tTrack: {track_name}")
+            print(f"\tArtist: {track_artist}")
             print(f"\tAudio features: {track_audio_features}")
+            artist = spotify.artist(track["track"]["artists"][0]["uri"])
+            track_genres = artist['genres']
             print(f"\tGenres: {track_genres}")
 
             #Add to data
-            data.append({'id': track_id, 'name': track_name,
-                         'artist_id':track_artist_id, 'artist': track_artist_name,
-                         'playlist_id': playlist_id, 'playlist': playlist_name,
-                         'genres': track_genres, **track_audio_features})
+            data.append({'id': track_id, 'name': track_name, 'artist': track_artist, 'genres': track_genres, **track_audio_features})
 
     
         #Write to csv
-        print("playlist checkpoint: writing to csv...")
+        print(data)
         write_to_csv('data.csv', data)
